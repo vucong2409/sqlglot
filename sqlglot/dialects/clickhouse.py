@@ -504,6 +504,7 @@ class ClickHouse(Dialect):
         PROPERTY_PARSERS = {
             **parser.Parser.PROPERTY_PARSERS,
             "ENGINE": lambda self: self._parse_engine_property(),
+            "REFRESH": lambda self: self._parse_auto_refresh(),
         }
         PROPERTY_PARSERS.pop("DYNAMIC")
 
@@ -965,6 +966,25 @@ class ClickHouse(Dialect):
                 )
 
             return value
+
+        def _parse_auto_refresh(self) -> t.Optional[exp.AutoRefreshProperty]:
+            kwargs = {}
+
+            if not (self._match_texts("EVERY") or self._match_texts("AFTER")):
+                self._retreat(self._index - 1)
+                return None
+            kwargs["this"] = self._parse_interval(match_interval=False)
+
+            if self._match_text_seq("RANDOMIZE", "FOR"):
+                kwargs["randomize"] = self._parse_interval(match_interval=False)
+            
+            if self._match_text_seq("DEPENDS", "ON"):
+                kwargs["depend"] = self._parse_table_parts()
+
+            if self._match_texts("APPEND"):
+                kwargs["append"] = self._parse_table
+
+            return self.expression(exp.AutoRefreshProperty, **kwargs)
 
     class Generator(generator.Generator):
         QUERY_HINTS = False
